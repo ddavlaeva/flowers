@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Букеты</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marck+Script&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F6E9EE;
+    --ink: #3A1730;
+    --soft: #8A6A7E;
+    --peony: #D9417A;
+    --leaf: #4F7A4A;
+    --glow: #F5C04A;
+    --card: #FFF8FA;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Manrope", system-ui, sans-serif;
+    padding: env(safe-area-inset-top, 0) 0 env(safe-area-inset-bottom, 0);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .screen { display: none; max-width: 520px; margin: 0 auto; padding: 20px 16px 32px; }
+  .screen.active { display: block; }
+
+  h1 {
+    font-family: "Marck Script", cursive;
+    font-weight: 400;
+    font-size: 44px;
+    line-height: 1.05;
+    margin: 8px 0 6px;
+  }
+  .sub { color: var(--soft); margin: 0 0 24px; line-height: 1.5; }
+
+  /* Главный экран */
+  .section-tile {
+    display: flex; align-items: center; gap: 16px;
+    width: 100%; padding: 18px;
+    background: var(--card); border: 0; border-radius: 22px;
+    color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+    box-shadow: 0 6px 24px -12px rgba(122, 30, 70, .35);
+  }
+  .section-tile svg { width: 72px; height: 72px; flex: none; }
+  .section-tile b { display: block; font-size: 20px; margin-bottom: 4px; }
+  .section-tile span { color: var(--soft); font-size: 14px; }
+
+  /* Заставка-предпросмотр */
+  #splash {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    background: var(--bg); transition: opacity .6s ease;
+  }
+  #splash.hide { opacity: 0; pointer-events: none; }
+  #splash .art { width: min(78vw, 360px); }
+  #splash img { width: 100%; border-radius: 24px; display: block; }
+  #splash p { font-family: "Marck Script", cursive; font-size: 28px; margin: 18px 0 0; }
+
+  /* Сетка букетов */
+  .counter { color: var(--soft); font-size: 14px; margin: -12px 0 16px; }
+  .grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+  }
+  .cell {
+    position: relative; aspect-ratio: 1; padding: 0; border: 0;
+    background: var(--card); border-radius: 14px; overflow: hidden; cursor: pointer;
+    transition: transform .25s ease, box-shadow .25s ease, opacity .3s;
+  }
+  .cell .pic { width: 100%; height: 100%; filter: blur(2.5px) saturate(.9); transition: filter .5s; }
+  .cell .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cell.given { opacity: .35; }
+  .cell.given::after {
+    content: "✓"; position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: 22px; font-weight: 700; color: var(--leaf);
+  }
+  .cell.flicker { box-shadow: 0 0 0 3px var(--peony); transform: scale(1.06); }
+  .cell.chosen {
+    z-index: 2; transform: scale(1.18);
+    box-shadow: 0 0 0 3px var(--glow), 0 0 28px 8px rgba(245, 192, 74, .75);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .cell.chosen .pic, .cell.peek .pic { filter: none; }
+  @keyframes pulse {
+    50% { box-shadow: 0 0 0 3px var(--glow), 0 0 44px 14px rgba(245, 192, 74, .9); }
+  }
+
+  .actions { margin-top: 22px; display: grid; gap: 10px; }
+  .btn {
+    width: 100%; padding: 16px; border: 0; border-radius: 16px;
+    font: 700 17px "Manrope", sans-serif; cursor: pointer;
+    background: var(--peony); color: #fff;
+  }
+  .btn:disabled { opacity: .5; }
+  .btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 2px rgba(58, 23, 48, .15); }
+  .btn:focus-visible, .cell:focus-visible, .section-tile:focus-visible { outline: 3px solid var(--glow); outline-offset: 2px; }
+
+  .result {
+    display: none; margin-top: 22px; padding: 18px; border-radius: 20px;
+    background: var(--card); text-align: center;
+  }
+  .result.show { display: block; animation: rise .5s ease; }
+  .result .name { font-family: "Marck Script", cursive; font-size: 34px; margin: 4px 0 14px; }
+  .result .hint { color: var(--soft); font-size: 14px; margin: 0; }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+
+  .petal {
+    position: fixed; top: -20px; width: 12px; height: 16px; border-radius: 60% 0 60% 0;
+    pointer-events: none; z-index: 20; animation: fall linear forwards;
+  }
+  @keyframes fall { to { transform: translateY(110vh) rotate(540deg); opacity: .2; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cell.chosen { animation: none; }
+    .petal { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Главный экран -->
+<section class="screen active" id="home">
+  <h1>Для тебя</h1>
+  <p class="sub">Здесь собраны цветы, которые мне нравятся.</p>
+  <button class="section-tile" id="openFlowers">
+    <span id="tileArt"></span>
+    <span><b>Цветы</b><span>25 букетов на год, по одному раз в две недели</span></span>
+  </button>
+</section>
+
+<!-- Раздел с цветами -->
+<section class="screen" id="flowers">
+  <h1>Какой букет сегодня?</h1>
+  <p class="counter" id="counter"></p>
+  <div class="grid" id="grid"></div>
+
+  <div class="result" id="result">
+    <p class="hint">Выпал букет</p>
+    <p class="name" id="resultName"></p>
+    <div class="actions" style="margin-top:0">
+      <button class="btn" id="giveBtn">Дарю этот букет</button>
+      <button class="btn ghost" id="againBtn">Крутить ещё раз</button>
+    </div>
+  </div>
+
+  <div class="actions" id="mainActions">
+    <button class="btn" id="spinBtn">Выбрать случайный букет</button>
+  </div>
+</section>
+
+<!-- Заставка, которая видна, пока раздел грузится -->
+<div id="splash" class="hide">
+  <div class="art" id="splashArt"></div>
+  <p>Собираю букеты…</p>
+</div>
+
+<script>
+/* ===== НАСТРОЙКИ ===== */
+
+// Статичная картинка для заставки. Положи файл preview.jpg рядом с index.html
+// и впиши сюда "preview.jpg". Пока пусто, рисуется нарисованный букет.
+const PREVIEW_IMAGE = "";
+
+// 25 букетов. Чтобы поставить настоящее фото, впиши в photo путь к файлу,
+// например photo: "img/1.jpg". Пока photo пустой, рисуется букет в этих цветах.
+const BOUQUETS = [
+  { name: "Алые розы",            c: ["#C8102E", "#E23A4F"], paper: "#EFE2D0" },
+  { name: "Белые пионы",          c: ["#FFFFFF", "#F6E3E8"], paper: "#CFE0D4" },
+  { name: "Розовые пионы",        c: ["#F4A6BD", "#E77FA0"], paper: "#FFF4E8" },
+  { name: "Подсолнухи",           c: ["#F7C531", "#E9A10F"], paper: "#DCC7A1", center: "#5A3A1A" },
+  { name: "Лавандовые розы",      c: ["#B9A0D9", "#9C7FC6"], paper: "#F1ECF7" },
+  { name: "Тюльпаны микс",        c: ["#F05A5A", "#F7B733"], paper: "#E8F0E0" },
+  { name: "Персиковые ранункулюсы", c: ["#F9B98C", "#F49A6C"], paper: "#FFF1E6" },
+  { name: "Синие гортензии",      c: ["#7DA7D9", "#5B86C5"], paper: "#EAF1FA" },
+  { name: "Ромашки",              c: ["#FFFFFF", "#FFFFFF"], paper: "#D9E8C5", center: "#F4C430" },
+  { name: "Фиолетовые ирисы",     c: ["#6B4EA2", "#8E6CC9"], paper: "#F3EFE3" },
+  { name: "Коралловые розы",      c: ["#FF7F6B", "#FF9E8A"], paper: "#F2E9E4" },
+  { name: "Белые лилии",          c: ["#FDFBF4", "#F3E6C8"], paper: "#BFD3C1" },
+  { name: "Кустовые розы",        c: ["#F28DB2", "#FFFFFF"], paper: "#E9DDF0" },
+  { name: "Орхидеи",              c: ["#D65DB1", "#F0A6DA"], paper: "#EFE7F4" },
+  { name: "Эустомы",              c: ["#C9B3E6", "#FFFFFF"], paper: "#E7EEE4" },
+  { name: "Бордовые георгины",    c: ["#7A1E3A", "#A8324F"], paper: "#EADCCB" },
+  { name: "Жёлтые розы",          c: ["#FFD84D", "#FFE899"], paper: "#E6EFE8" },
+  { name: "Анемоны",              c: ["#FFFFFF", "#E8E2F0"], paper: "#D8D2E6", center: "#2B2340" },
+  { name: "Хризантемы",           c: ["#F2994A", "#F7C08A"], paper: "#F3EADF" },
+  { name: "Пудровые розы",        c: ["#E8C4C4", "#D9A5A5"], paper: "#F7F1EC" },
+  { name: "Васильки с колосками", c: ["#3F6FD8", "#E3C07A"], paper: "#EFE9DA" },
+  { name: "Маки",                 c: ["#E63B2E", "#FF6F59"], paper: "#EDE3D6", center: "#1E1E1E" },
+  { name: "Фрезии",               c: ["#FFF06A", "#F9A8D4"], paper: "#EEF4E6" },
+  { name: "Сирень",               c: ["#B48FD1", "#D7BDEB"], paper: "#F1EEF6" },
+  { name: "Сухоцветы",            c: ["#C9A27E", "#E3D0B5"], paper: "#DCD3C3" }
+];
+
+/* ===== ДАЛЬШЕ МОЖНО НЕ ТРОГАТЬ ===== */
+
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  try { tg.setHeaderColor("#F6E9EE"); tg.setBackgroundColor("#F6E9EE"); } catch (e) {}
+}
+const haptic = (kind) => {
+  try {
+    if (!tg || !tg.HapticFeedback) return;
+    kind === "success" ? tg.HapticFeedback.notificationOccurred("success")
+                       : tg.HapticFeedback.impactOccurred("light");
+  } catch (e) {}
+};
+
+// Рисуем букет в SVG
+function flower(x, y, r, color, center) {
+  let s = "";
+  for (let i = 0; i < 6; i++) {
+    s += `<ellipse cx="${x}" cy="${y - r * 0.5}" rx="${r * 0.45}" ry="${r * 0.62}" fill="${color}"
+      stroke="rgba(0,0,0,.08)" stroke-width=".6" transform="rotate(${i * 60} ${x} ${y})"/>`;
+  }
+  return s + `<circle cx="${x}" cy="${y}" r="${r * 0.33}" fill="${center}"/>`;
+}
+function bouquetSVG(b) {
+  const heads = [[50,36,11],[34,45,9],[66,45,9],[41,24,8.5],[59,24,8.5],[50,53,8],[24,33,6.5],[76,33,6.5]];
+  const center = b.center || "rgba(90,40,60,.45)";
+  let stems = "", flowers = "";
+  heads.forEach(([x, y, r], i) => {
+    stems += `<line x1="50" y1="90" x2="${x}" y2="${y}" stroke="#5E8A57" stroke-width="1.6"/>`;
+    flowers += flower(x, y, r, b.c[i % 2], center);
+  });
+  return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <polygon points="22,50 78,50 56,96 44,96" fill="${b.paper}"/>
+    ${stems}
+    <ellipse cx="30" cy="60" rx="9" ry="3.5" fill="#6E9B5F" transform="rotate(-30 30 60)"/>
+    <ellipse cx="70" cy="60" rx="9" ry="3.5" fill="#6E9B5F" transform="rotate(30 70 60)"/>
+    ${flowers}
+    <polygon points="30,62 70,62 56,96 44,96" fill="${b.paper}" stroke="rgba(0,0,0,.08)" stroke-width=".6"/>
+    <rect x="43" y="78" width="14" height="5" rx="2" fill="#D9417A"/>
+  </svg>`;
+}
+function picHTML(b) {
+  return b.photo ? `<img src="${b.photo}" alt="">` : bouquetSVG(b);
+}
+
+// Сохранение подаренных букетов (в облаке Telegram, а вне Telegram в браузере)
+const KEY = "given_bouquets";
+let given = [];
+function loadGiven() {
+  return new Promise((resolve) => {
+    const fromLocal = () => {
+      try { resolve(JSON.parse(localStorage.getItem(KEY) || "[]")); } catch (e) { resolve([]); }
+    };
+    if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast("6.9")) {
+      tg.CloudStorage.getItem(KEY, (err, val) => {
+        if (err || !val) return fromLocal();
+        try { resolve(JSON.parse(val)); } catch (e) { resolve([]); }
+      });
+    } else fromLocal();
+  });
+}
+function saveGiven() {
+  const val = JSON.stringify(given);
+  try { localStorage.setItem(KEY, val); } catch (e) {}
+  if (tg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast("6.9")) {
+    tg.CloudStorage.setItem(KEY, val, () => {});
+  }
+}
+
+// Экраны
+const $ = (id) => document.getElementById(id);
+const splash = $("splash"), grid = $("grid");
+$("tileArt").innerHTML = bouquetSVG(BOUQUETS[2]);
+$("splashArt").innerHTML = PREVIEW_IMAGE ? `<img src="${PREVIEW_IMAGE}" alt="Цветы">` : bouquetSVG(BOUQUETS[0]);
+
+function show(screen) {
+  document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("active", s.id === screen));
+  if (tg && tg.BackButton) screen === "home" ? tg.BackButton.hide() : tg.BackButton.show();
+}
+if (tg && tg.BackButton) tg.BackButton.onClick(() => show("home"));
+
+let built = false;
+$("openFlowers").addEventListener("click", async () => {
+  splash.classList.remove("hide");
+  const minDelay = new Promise((r) => setTimeout(r, 1200)); // заставку видно хотя бы 1,2 с
+  if (!built) {
+    given = await loadGiven();
+    buildGrid();
+    await preloadPhotos();
+    built = true;
+  }
+  await minDelay;
+  show("flowers");
+  splash.classList.add("hide");
+});
+
+function preloadPhotos() {
+  const photos = BOUQUETS.filter((b) => b.photo);
+  return Promise.all(photos.map((b) => new Promise((r) => {
+    const img = new Image(); img.onload = img.onerror = r; img.src = b.photo;
+  })));
+}
+
+function buildGrid() {
+  grid.innerHTML = "";
+  BOUQUETS.forEach((b, i) => {
+    const cell = document.createElement("button");
+    cell.className = "cell" + (given.includes(i) ? " given" : "");
+    cell.setAttribute("aria-label", b.name);
+    cell.innerHTML = `<div class="pic">${picHTML(b)}</div>`;
+    // Долгое нажатие: подсмотреть букет без размытия
+    cell.addEventListener("pointerdown", () => cell.classList.add("peek"));
+    ["pointerup", "pointerleave", "pointercancel"].forEach((ev) =>
+      cell.addEventListener(ev, () => cell.classList.remove("peek")));
+    grid.appendChild(cell);
+  });
+  updateCounter();
+}
+function updateCounter() {
+  $("counter").textContent = `Подарено ${given.length} из ${BOUQUETS.length}`;
+}
+
+// Рандомайзер
+let spinning = false, chosenIndex = null;
+const cells = () => [...grid.children];
+
+function spin() {
+  if (spinning) return;
+  let pool = BOUQUETS.map((_, i) => i).filter((i) => !given.includes(i));
+  if (pool.length === 0) {
+    if (!confirm("Все 25 букетов уже подарены. Начать новый круг?")) return;
+    given = []; saveGiven(); buildGrid();
+    pool = BOUQUETS.map((_, i) => i);
+  }
+  spinning = true;
+  $("spinBtn").disabled = true;
+  $("result").classList.remove("show");
+  cells().forEach((c) => c.classList.remove("chosen", "flicker"));
+
+  const final = pool[Math.floor(Math.random() * pool.length)];
+  const steps = 24;
+  let step = 0, prev = null;
+
+  const tick = () => {
+    if (prev !== null) cells()[prev].classList.remove("flicker");
+    if (step >= steps) return land(final);
+    let next;
+    do { next = pool[Math.floor(Math.random() * pool.length)]; } while (pool.length > 1 && next === prev);
+    cells()[next].classList.add("flicker");
+    haptic("light");
+    prev = next;
+    step++;
+    setTimeout(tick, 50 + Math.pow(step / steps, 2.2) * 320); // постепенно замедляется
+  };
+  tick();
+}
+
+function land(i) {
+  chosenIndex = i;
+  const cell = cells()[i];
+  cell.classList.add("chosen");
+  haptic("success");
+  petals();
+  $("resultName").textContent = BOUQUETS[i].name;
+  $("result").classList.add("show");
+  $("mainActions").style.display = "none";
+  cell.scrollIntoView({ behavior: "smooth", block: "center" });
+  spinning = false;
+}
+
+function petals() {
+  const colors = ["#F4A6BD", "#D9417A", "#F5C04A", "#FFFFFF", "#B9A0D9"];
+  for (let k = 0; k < 28; k++) {
+    const p = document.createElement("div");
+    p.className = "petal";
+    p.style.left = Math.random() * 100 + "vw";
+    p.style.background = colors[k % colors.length];
+    p.style.animationDuration = 2.2 + Math.random() * 1.8 + "s";
+    p.style.animationDelay = Math.random() * 0.4 + "s";
+    document.body.appendChild(p);
+    setTimeout(() => p.remove(), 4600);
+  }
+}
+
+$("spinBtn").addEventListener("click", spin);
+$("againBtn").addEventListener("click", () => {
+  $("mainActions").style.display = "";
+  spin();
+});
+$("giveBtn").addEventListener("click", () => {
+  if (chosenIndex === null) return;
+  if (!given.includes(chosenIndex)) given.push(chosenIndex);
+  saveGiven();
+  const cell = cells()[chosenIndex];
+  cell.classList.remove("chosen");
+  cell.classList.add("given");
+  updateCounter();
+  $("result").classList.remove("show");
+  $("mainActions").style.display = "";
+  $("spinBtn").disabled = false;
+  chosenIndex = null;
+  if (tg && tg.showAlert) tg.showAlert("Записал! Следующее напоминание придёт через 2 недели 🌷");
+});
+</script>
+</body>
+</html>
