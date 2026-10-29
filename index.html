@@ -114,9 +114,31 @@
   }
   @keyframes fall { to { transform: translateY(110vh) rotate(540deg); opacity: .2; } }
 
+  /* Шторка с вопросами */
+  #sheetBackdrop {
+    position: fixed; inset: 0; z-index: 30;
+    background: rgba(58, 23, 48, .35);
+    opacity: 0; pointer-events: none; transition: opacity .35s ease;
+  }
+  #sheetBackdrop.open { opacity: 1; pointer-events: auto; }
+  #sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 31;
+    max-width: 520px; margin: 0 auto;
+    background: var(--card); border-radius: 26px 26px 0 0;
+    padding: 12px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+    transform: translateY(105%); transition: transform .45s cubic-bezier(.2, .9, .3, 1);
+    box-shadow: 0 -10px 40px -16px rgba(122, 30, 70, .45);
+  }
+  #sheet.open { transform: translateY(0); }
+  #sheet .handle { width: 42px; height: 5px; border-radius: 3px; background: rgba(58, 23, 48, .15); margin: 0 auto 18px; }
+  #sheet .q { font-family: "Marck Script", cursive; font-size: 32px; line-height: 1.15; margin: 0 0 20px; text-align: center; }
+  #sheet .opts { display: grid; gap: 10px; }
+  #sheet .step { animation: rise .35s ease; }
+
   @media (prefers-reduced-motion: reduce) {
     .cell.chosen { animation: none; }
     .petal { display: none; }
+    #sheet, #sheetBackdrop { transition: none; }
   }
 </style>
 </head>
@@ -128,7 +150,7 @@
   <p class="sub">Здесь пока собраны только букеты</p>
   <button class="section-tile" id="openFlowers">
     <span id="tileArt"></span>
-    <span><b>Цветы</b><span>25 букетов в течении года</span></span>
+    <span><b>Цветы</b><span>25 букетов в течение года</span></span>
   </button>
 </section>
 
@@ -151,6 +173,13 @@
     <button class="btn" id="spinBtn">Выбрать случайный букет</button>
   </div>
 </section>
+
+<!-- Шторка с вопросами (появляется через 2 секунды) -->
+<div id="sheetBackdrop"></div>
+<div id="sheet" role="dialog" aria-modal="true">
+  <div class="handle"></div>
+  <div id="sheetBody"></div>
+</div>
 
 <!-- Заставка, которая видна, пока раздел грузится -->
 <div id="splash" class="hide">
@@ -386,6 +415,85 @@ $("againBtn").addEventListener("click", () => {
   $("mainActions").style.display = "";
   spin();
 });
+/* ===== ШТОРКА С ВОПРОСАМИ =====
+   Тексты вопросов и ответов можно менять прямо здесь.
+   next: "..." — к какому шагу перейти; close: true — закрыть шторку;
+   flowers: true — закрыть шторку и открыть раздел с цветами. */
+const QUIZ = {
+  start: {
+    q: "Ты уже знаешь, что хочешь подарить?",
+    options: [
+      { text: "Да", close: true },
+      { text: "Нет", next: "sorry" }
+    ]
+  },
+  sorry: {
+    q: "Ты накосячил и хочешь извиниться?",
+    options: [
+      { text: "Да", next: "noHelp" },
+      { text: "Нет", next: "mood" }
+    ]
+  },
+  noHelp: {
+    q: "Ну тут даже сервис не поможет",
+    options: [{ text: "Понял", close: true }]
+  },
+  mood: {
+    q: "Какое у неё сейчас настроение?",
+    options: [
+      { text: "Хорошее", next: "great" },
+      { text: "Плохое", next: "bad" },
+      { text: "Не знаю", next: "ask" }
+    ]
+  },
+  great: {
+    q: "Отлично",
+    options: [{ text: "Выбрать букет", flowers: true }]
+  },
+  bad: {
+    q: "Одним букетом тут не обойтись",
+    options: [{ text: "Понял", close: true }]
+  },
+  ask: {
+    q: "Ну так узнай",
+    options: [{ text: "Пойду узнавать", close: true }]
+  }
+};
+
+const sheet = $("sheet"), sheetBackdrop = $("sheetBackdrop"), sheetBody = $("sheetBody");
+
+function showStep(key) {
+  const step = QUIZ[key];
+  sheetBody.innerHTML = `<div class="step"><p class="q">${step.q}</p><div class="opts"></div></div>`;
+  const opts = sheetBody.querySelector(".opts");
+  step.options.forEach((o, i) => {
+    const b = document.createElement("button");
+    b.className = "btn" + (i > 0 ? " ghost" : "");
+    b.textContent = o.text;
+    b.addEventListener("click", () => {
+      haptic("light");
+      if (o.next) showStep(o.next);
+      else {
+        closeSheet();
+        if (o.flowers) $("openFlowers").click();
+      }
+    });
+    opts.appendChild(b);
+  });
+}
+function openSheet() {
+  showStep("start");
+  sheetBackdrop.classList.add("open");
+  sheet.classList.add("open");
+}
+function closeSheet() {
+  sheetBackdrop.classList.remove("open");
+  sheet.classList.remove("open");
+}
+
+// Шторка появляется через 2 секунды после входа в сервис
+setTimeout(openSheet, 2000);
+
 $("giveBtn").addEventListener("click", () => {
   if (chosenIndex === null) return;
   if (!given.includes(chosenIndex)) given.push(chosenIndex);
